@@ -1,0 +1,137 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1187\cocoasubrtf340
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;\red2\green26\blue128;}
+\margl1440\margr1440\vieww12940\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\f0\fs24 \cf0 #### Get Samples:\
+files = paste(1987:2008, ".csv", sep="")\
+out.files = paste("out", 1987:2008, ".csv", sep="")\
+\
+set.seed(12)\
+rowcounts = system("for K in [0-9]*.csv;do LC_ALL=C cut -f 17 -d',' $K|wc -l; done", intern=TRUE)[-c(16,18)]\
+rows = as.numeric(rowcounts) - 1\
+random = lapply(1:length(rows), function(i) (sample(1:rows[i], 100000)+1, replace = TRUE))\
+ind = lapply(random, sort)\
+	\
+samp = function(file, ind_num)\{\
+	cat(readLines(file, n=-1)[ind[[ind_num]]], file = out.files[[ind_num]], sep="\\n")\
+\}\
+\
+library(parallel)\
+cl = makeCluster(8, type="FORK")\
+clusterApply(cl, 1:length(files), function(i) samp(files[i], i))\
+stopCluster(cl)\
+\
+### Input Data as a database:\
+library(DBI)\
+library(RSQLite)\
+\
+drv <- dbDriver("SQLite")\
+con <- dbConnect(drv, "sample.db")\
+data <- sqliteQuickSQL(con, "select * from sample", bind.data=NULL)\
+\
+### Data Cleaning:\
+drops = c("CancellationCode", "WeatherDelay", "SecurityDelay", "NASDelay", "LateAircraftDelay", "CarrierDelay","TailNum","FlightNum")\
+data = data[,!names(data) %in% drops]\
+\
+Num_class_vars = c("Month","DayofMonth","DayOfWeek","DepTime","CRSDepTime","ArrTime","CRSArrTime","ActualElapsedTime","CRSElapsedTime","AirTime","ArrDelay","DepDelay","Distance","TaxiIn","TaxiOut")\
+\
+data[Num_class_vars] = sapply(data[Num_class_vars], as.numeric)\
+sapply(data, class)\
+\
+Origin = as.data.frame(table(data$Origin))\
+Origin = Origin[order(-Origin$Freq),]\
+Top_Port = Origin[1:32,]$Var1\
+\
+Port = subset(data, Origin %in% Top_Port)\
+Port = Port[names(Port) != "Dest"]\
+\
+Port[names(Port)[!(names(Port) %in% Num_class_vars)]] = lapply(Port[names(Port)[!(names(Port) %in% Num_class_vars)]], as.factor)\
+sapply(Port, class)\
+\
+\
+Port = na.omit(Port)\
+\
+EvenPort = Port[seq(1, length(Port[[1]]), 15), ]\
+\
+### Random Forests:\
+library(randomForest)\
+\
+cl = makeCluster(8, type="FORK")\
+RF = clusterApply(cl, 1:15, function(i) randomForest(ArrDelay~., data=EvenPort))\
+stopCluster(cl)\
+\
+### Prediction:\
+cl = makeCluster(8, type="FORK")\
+Pred = clusterApply(cl, 1:5, function(i) predict(RF[[i]]))\
+stopCluster(cl)\
+\
+P = unlist(Pred)\
+\
+################################################################################\
+\pard\pardeftab720
+\cf0 \
+### Create Database:\
+### In SQLite:\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\tx7280\tx7840\tx8400\tx8960\tx9520\tx10080\tx10640\tx11200\tx11760\tx12320\tx12880\tx13440\tx14000\tx14560\tx15120\tx15680\tx16240\tx16800\tx17360\tx17920\tx18480\tx19040\tx19600\tx20160\tx20720\tx21280\tx21840\tx22400\tx22960\tx23520\tx24080\tx24640\tx25200\tx25760\tx26320\tx26880\tx27440\tx28000\tx28560\tx29120\tx29680\tx30240\tx30800\tx31360\tx31920\tx32480\tx33040\tx33600\tx34160\tx34720\tx35280\tx35840\li80\fi-80\pardirnatural
+\cf0 sqlite3 \cf2 -\cf0 separator \cf2 ,\cf0  sample.db\
+\pard\pardeftab720
+\cf0 create table sample (\
+  Year int,\
+  Month int,\
+  DayofMonth int,\
+  DayOfWeek int,\
+  DepTime  int,\
+  CRSDepTime int,\
+  ArrTime int,\
+  CRSArrTime int,\
+  UniqueCarrier varchar(5),\
+  FlightNum int,\
+  TailNum varchar(8),\
+  ActualElapsedTime int,\
+  CRSElapsedTime int,\
+  AirTime int,\
+  ArrDelay int,\
+  DepDelay int,\
+  Origin varchar(3),\
+  Dest varchar(3),\
+  Distance int,\
+  TaxiIn int,\
+  TaxiOut int,\
+  Cancelled int,\
+  CancellationCode varchar(1),\
+  Diverted varchar(1),\
+  CarrierDelay int,\
+  WeatherDelay int,\
+  NASDelay int,\
+  SecurityDelay int,\
+  LateAircraftDelay int\
+);\
+\
+.separator ,\
+.import out1987.csv sample\
+.import out1988.csv sample\
+.import out1989.csv sample\
+.import out1990.csv sample\
+.import out1991.csv sample\
+.import out1992.csv sample\
+.import out1993.csv sample\
+.import out1994.csv sample\
+.import out1995.csv sample\
+.import out1996.csv sample\
+.import out1997.csv sample\
+.import out1998.csv sample\
+.import out1999.csv sample\
+.import out2000.csv sample\
+.import out2001.csv sample\
+.import out2002.csv sample\
+.import out2003.csv sample\
+.import out2004.csv sample\
+.import out2005.csv sample\
+.import out2006.csv sample\
+.import out2007.csv sample\
+.import out2008.csv sample\
+\
+.table\
+.quit}
